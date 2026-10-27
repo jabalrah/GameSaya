@@ -1,1 +1,68 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rumah Mungil</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;1,400;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="app" id="app">
+    <aside class="panel panel-left" id="panel-left" aria-label="Pilih objek bangunan">
+      <p class="loading">Memuat aset</p>
+    </aside>
 
+    <section class="stage">
+      <div class="stage-top">
+        <button type="button" class="btn" id="fullscreen" aria-pressed="false">Layar penuh</button>
+        <button type="button" class="btn" id="toggle" aria-controls="panel-left panel" aria-expanded="true">Sembunyikan panel edit</button>
+        <button type="button" class="btn" id="sound" aria-pressed="false">Suara: mati</button>
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button type="button" class="btn zbtn" id="zoom-out" aria-label="Perkecil">&minus;</button>
+          <button type="button" class="btn zread" id="zoom-reset" title="Kembali ke 100%">100%</button>
+          <button type="button" class="btn zbtn" id="zoom-in" aria-label="Perbesar">+</button>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="scene" aria-label="Bangunan kecil hasil rancanganmu"></canvas>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <aside class="panel" id="panel" aria-label="Kustomisasi">
+      <p class="loading">Memuat aset</p>
+    </aside>
+
+  </main>
+
+  <noscript>Game ini membutuhkan JavaScript.</noscript>
+
+  <script>
+    window.addEventListener('error', function (e) {
+      var p = document.getElementById('panel');
+      if (p) p.textContent = 'Terjadi error: ' + e.message + (e.filename ? ' (' + e.filename.split('/').slice(-2).join('/') + ':' + e.lineno + ')' : '');
+    }, true);
+  </script>
+  <script src="assets/manifest.js"></script>
+  <script src="js/assets.js"></script>
+  <script src="js/themes.js"></script>
+  <script src="js/backdrops.js"></script>
+  <script src="js/weather.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/texts.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/shadows.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

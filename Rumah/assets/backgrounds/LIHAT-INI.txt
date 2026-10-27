@@ -1,0 +1,15 @@
+Latar tiap tema ada di folder ini: forest/ (Hutan), city/ (Kota), beach/ (Pantai).
+Setiap tema punya 4 layer PNG, dari paling belakang ke paling depan:
+
+  background.png   langit + tanah (layer paling belakang)
+  awan.png         awan, latar transparan; bergoyang pelan seperti dedaunan
+  jauh.png         objek jauh (bukit, pohon, gedung, laut), latar transparan
+  depan.png        objek depan (garis tanah, rumput, pagar), latar transparan; digambar DI ATAS bangunan
+
+UKURAN KANVAS KEEMPAT FILE HARUS SAMA: 1920 x 1200 piksel (= dunia 480 x 300 satuan).
+Gambar saja di kanvas yang sama, tanpa skala atau posisi khusus per file.
+
+Garis tanah ada di y = 1080 piksel. Bangunan berdiri di garis itu. Bagian jauh.png di bawah y = 1072 sebaiknya transparan.
+Semua layer diulang ke samping, jadi sisi kiri dan kanan sebaiknya menyambung.
+Malam dan hujan menggelapkan gambar otomatis. Selama background.png ada, matahari/bulan/bintang bawaan tidak digambar.
+File yang tidak ada diganti latar vektor bawaan (js/themes.js). Muat ulang halaman (F5) setelah mengganti file.

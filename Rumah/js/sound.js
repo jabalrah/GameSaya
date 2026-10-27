@@ -152,7 +152,7 @@
     // Efek suara singkat; diam bila suara dimatikan.
     sfx: function (name) { if (running && SFX[name]) SFX[name](ctx.currentTime); },
 
-    set: function (data) { last = { theme: data.theme, night: data.time === 'night', rain: data.weather === 'rain' }; apply(); },
+    set: function (data) { last = { theme: data.theme, night: window.Weather ? Weather.isNight(data) : data.time === 'night', rain: data.weather === 'rain' }; apply(); },
 
     bind: function (button) {
       btn = button; label();

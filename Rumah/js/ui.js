@@ -116,7 +116,7 @@
     if (!previews[pkey]) {
       const full = document.createElement('canvas');
       full.width = Renderer.WIDTH; full.height = Renderer.HEIGHT;
-      Renderer.draw(full.getContext('2d'), { pieces: [], theme: t.id, bg: t.plain ? State.data.bg : undefined }, null, 1);
+      Renderer.draw(full.getContext('2d'), { pieces: [], theme: t.id, bg: t.plain ? State.data.bg : undefined, noClock: true }, null, 1);
       previews[pkey] = full;
     }
     const c = document.createElement('canvas');
@@ -166,35 +166,98 @@
   // Posisi matahari: penggeser 0-100 (kiri = terbit, tengah = puncak, kanan = terbenam) + tiga pilihan cepat.
   const SUN_PRESETS = [['Pagi', 0.1], ['Siang', 0.5], ['Sore', 0.9]];
   function sunSection() {
-    const cur = State.data.sun;
+    const cur = State.data.sun, auto = Weather.clock.on;   // saat jam hari aktif, posisi matahari diatur jam
     const input = h('input', { type: 'range', class: 'sun-slider', 'data-key': 'sun-slider', min: '0', max: '100', step: '1',
-      value: String(Math.round(cur * 100)), 'aria-label': 'Posisi matahari' });
+      value: String(Math.round(cur * 100)), 'aria-label': 'Posisi matahari', disabled: auto });
     input.addEventListener('input', function (e) { State.setSun(e.target.value / 100, true); });
     input.addEventListener('change', function (e) { State.setSun(e.target.value / 100); });
     return h('div', null,
-      h('p', { class: 'tip' }, 'Posisi matahari. Bayangan ikut berubah arah dan panjangnya. Di malam hari yang bergerak adalah bulan.'),
+      h('p', { class: 'tip' }, auto ? 'Posisi matahari diatur otomatis oleh siklus hari. Pilih Pagi, Siang, Sore, atau Malam di atas untuk mengaturnya sendiri lagi.'
+        : 'Posisi matahari. Bayangan ikut berubah arah dan panjangnya. Di malam hari yang bergerak adalah bulan.'),
       h('div', { class: 'tabs' }, SUN_PRESETS.map(function (it) {
         return h('button', {
-          type: 'button', class: 'tab', 'data-key': 'sun-' + it[0].toLowerCase(),
-          'aria-pressed': String(Math.abs(cur - it[1]) < 0.005), onClick: function () { State.setSun(it[1]); }
+          type: 'button', class: 'tab', 'data-key': 'sun-' + it[0].toLowerCase(), disabled: auto,
+          'aria-pressed': String(!auto && Math.abs(cur - it[1]) < 0.005), onClick: function () { State.setSun(it[1]); }
         }, it[0]);
       })),
       input,
       h('div', { class: 'sun-scale' }, h('span', null, 'Kiri'), h('span', null, 'Puncak'), h('span', null, 'Kanan')));
   }
 
+  // ---- Siklus hari: waktu berjalan otomatis (pagi, siang, sore, malam, lalu kembali ke pagi) dengan perubahan halus ----
+  // Penggeser waktu bisa dipakai kapan saja untuk memajukan atau memundurkan waktu; kecepatan dan arah juga bisa dipilih.
+  let clockRefs = null, clockLabelSeen = '';
+  const TIME_NAMES = ['Pagi', 'Siang', 'Sore', 'Malam'];
+  const redraw = function () { window.dispatchEvent(new Event('rumah-redraw')); };
+
+  function clockPhase() { const i = Weather.TODS.indexOf(State.data.time); return Weather.clock.on ? ((Weather.clock.phase % 4) + 4) % 4 : (i < 0 ? 1 : i); }
+  function clockLabel() {
+    const p = clockPhase(), i = Math.floor(p) % 4, w = p - Math.floor(p);
+    if (!Weather.clock.on) return 'Waktu manual: ' + TIME_NAMES[i];
+    if (w < 0.04) return TIME_NAMES[i];
+    if (w > 0.96) return TIME_NAMES[(i + 1) % 4];
+    return TIME_NAMES[i] + ' menuju ' + TIME_NAMES[(i + 1) % 4];
+  }
+
+  function clockSection() {
+    const C = Weather.clock, running = C.on && C.auto;
+    const pill = function (label, key, pressed, fn) {
+      return h('button', { type: 'button', class: 'tab', 'data-key': key, 'aria-pressed': String(pressed), onClick: fn }, label);
+    };
+    const toggle = h('button', {
+      type: 'button', class: 'btn', 'data-key': 'clock-auto', 'aria-pressed': String(running),
+      onClick: function () { Weather.setAuto(State.data, !running); redraw(); render(State.data); }
+    }, running ? 'Jeda siklus' : 'Mulai siklus otomatis');
+    const label = h('p', { class: 'clock-label', 'data-key': 'clock-label' }, clockLabel());
+    const range = h('input', {
+      type: 'range', class: 'sun-slider', 'data-key': 'clock-slider', min: '0', max: '4', step: '0.001',
+      value: clockPhase().toFixed(3), 'aria-label': 'Waktu dalam sehari'
+    });
+    range.addEventListener('pointerdown', function () { C.drag = true; });
+    range.addEventListener('input', function (e) { C.drag = true; Weather.setPhase(State.data, +e.target.value); redraw(); });   // maju atau mundur, selalu halus
+    range.addEventListener('change', function () { C.drag = false; Weather.saveClock(); redraw(); render(State.data); });
+    range.addEventListener('pointercancel', function () { C.drag = false; });
+    clockRefs = { range: range, label: label };
+    return h('div', null,
+      h('p', { class: 'tip' }, 'Siklus hari: tiap perpindahan waktu memakan 1 menit (kecepatan 1x). Geser penggeser untuk memajukan atau memundurkan.'),
+      toggle, label, range,
+      h('div', { class: 'clock-scale' }, h('span', { style: 'left:3%' }, 'Pagi'), h('span', { style: 'left:25%' }, 'Siang'), h('span', { style: 'left:50%' }, 'Sore'), h('span', { style: 'left:75%' }, 'Malam')),
+      h('p', { class: 'tip' }, 'Kecepatan'),
+      h('div', { class: 'tabs tabs-tight' }, Weather.SPEEDS.map(function (v) {
+        return pill(v + 'x', 'clock-speed-' + v, C.speed === v, function () { Weather.setSpeed(v); render(State.data); });
+      })),
+      h('div', { class: 'tabs tabs-tight' },
+        pill('Maju', 'clock-dir-fwd', C.dir > 0, function () { Weather.setDir(1); render(State.data); }),
+        pill('Mundur', 'clock-dir-back', C.dir < 0, function () { Weather.setDir(-1); render(State.data); })));
+  }
+
+  // Dipanggil tiap selesai menggambar: geser penggeser waktu dan tulisan waktu mengikuti jam (tanpa membangun ulang panel).
+  function syncClock() {
+    if (!clockRefs || !clockRefs.range.isConnected) return;
+    if (!Weather.clock.drag) clockRefs.range.value = clockPhase().toFixed(3);
+    const t = clockLabel();
+    if (t !== clockLabelSeen) { clockLabelSeen = t; clockRefs.label.textContent = t; }
+  }
+
   function envTab() {
+    const C = Weather.clock;
     const group = function (title, key, items) {
       return h('div', null, h('p', { class: 'tip' }, title),
         h('div', { class: 'tabs' }, items.map(function (it) {
           return h('button', {
             type: 'button', class: 'tab', 'data-key': 'env-' + key + '-' + it[0],
-            'aria-pressed': String(State.data[key] === it[0]), onClick: function () { State.setEnv(key, it[0]); }
+            'aria-pressed': String(!(key === 'time' && C.on) && State.data[key] === it[0]),
+            onClick: function () {
+              // Saat jam hari aktif, memilih waktu meluncur halus ke waktu itu, lalu kembali ke pengaturan manual.
+              if (key === 'time' && C.on) { Weather.clockExit(it[0], function (sun) { State.setTimeSun(it[0], sun); }); redraw(); }
+              else State.setEnv(key, it[0]);
+            }
           }, it[1]);
         })));
     };
     return h('div', null,
       group('Waktu. Pagi dan sore memberi filter cahaya hangat; matahari ikut turun.', 'time', [['morning', 'Pagi'], ['day', 'Siang'], ['dusk', 'Sore'], ['night', 'Malam']]),
+      clockSection(),
       group('Cuaca. Bisa digabung dengan siang atau malam.', 'weather', [['clear', 'Cerah'], ['rain', 'Hujan']]),
       sunSection());
   }
@@ -617,6 +680,7 @@
 
   global.UI = {
     layout: layoutLayerBar,
+    syncClock: syncClock,
     init: function (opts) {
       panel = opts.panel;
       left = opts.left;

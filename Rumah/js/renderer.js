@@ -70,18 +70,18 @@
     ctx.transform(1 + 0.015 * wind * Math.cos(ph * 2), 0, -gust * sw.amp * wind, 1 - 0.008 * wind * Math.abs(gust), 0, 0);
   }
 
-  const Renderer = {
-    WIDTH: CW, HEIGHT: CH, GROUND: GROUND, SCALE: SCALE,
+  // Kanvas sementara untuk waktu kedua saat dua suasana dicampur (dipakai ulang; ukurannya mengikuti kanvas tujuan).
+  let blendCv = null;
+  function blendCanvas(w, h) {
+    if (!blendCv) blendCv = document.createElement('canvas');
+    if (blendCv.width !== w || blendCv.height !== h) { blendCv.width = w; blendCv.height = h; }
+    return blendCv;
+  }
 
-    draw: function (ctx, state, selectedId, scale, cam, view) {
-      // Tanpa kamera (thumbnail, ekspor) = pemandangan 480x300 saja; dengan kamera = ukuran layar saat ini.
-      const size = view || (cam ? Camera.size : { w: CW, h: CH });   // view = ukuran area gambar (satuan dunia), untuk ekspor peta penuh
-      scale = scale || SCALE; cam = cam || HOME;
-      const theme = Themes.find(state.theme);
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-
-      const env = Weather.env(state);
+  // Seluruh adegan (latar, bangunan, bayangan, cahaya, layer depan, hujan) untuk satu suasana, tanpa garis seleksi.
+  function scene(ctx, state, theme, env, scale, cam, size) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
       Weather.layers(theme, env).forEach(function (layer) {
         ctx.save();
         if (layer.tone !== false) Weather.tint(ctx, env);
@@ -132,6 +132,29 @@
         ctx.save(); Weather.fogFront(ctx, setView(ctx, scale, cam, size, 1), env); ctx.restore();   // kabut rendah di depan rumah
         ctx.save(); Weather.rainFront(ctx, setView(ctx, scale, cam, size, 0), env); ctx.restore();
       }
+    return { k: k, ox: ox, oy: oy };
+  }
+
+  const Renderer = {
+    WIDTH: CW, HEIGHT: CH, GROUND: GROUND, SCALE: SCALE,
+
+    draw: function (ctx, state, selectedId, scale, cam, view) {
+      // Tanpa kamera (thumbnail, ekspor) = pemandangan 480x300 saja; dengan kamera = ukuran layar saat ini.
+      const size = view || (cam ? Camera.size : { w: CW, h: CH });   // view = ukuran area gambar (satuan dunia), untuk ekspor peta penuh
+      scale = scale || SCALE; cam = cam || HOME;
+      const theme = Themes.find(state.theme);
+
+      // Suasana: satu waktu saja, atau (jam hari berjalan) dua waktu bersebelahan yang dicampur halus: waktu b digambar di kanvas
+      // sementara lalu ditempel di atas waktu a dengan bobot f. Bagian yang sama di keduanya tetap sama persis.
+      const mixed = Weather.mix(state), env = mixed.a;
+      const g = scene(ctx, state, theme, env, scale, cam, size);
+      if (mixed.b) {
+        const bc = blendCanvas(ctx.canvas.width, ctx.canvas.height), bx = bc.getContext('2d');
+        bx.setTransform(1, 0, 0, 1, 0, 0); bx.globalAlpha = 1; bx.clearRect(0, 0, bc.width, bc.height);
+        scene(bx, state, theme, mixed.b, scale, cam, size);
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = mixed.f; ctx.drawImage(bc, 0, 0); ctx.restore();
+      }
+      const k = g.k, ox = g.ox, oy = g.oy;
 
       const sel = state.pieces.find(function (p) { return p.id === selectedId; });
       if (sel) {

@@ -191,7 +191,7 @@
       if (env.rain) flat.push({ depth: 0, tone: false, draw: function (c, b) { rain(c, b, 1100, 2.2, 0.36, 150, 1, 0.34, env.rainRGB); } });
       return flat;
     }
-    const L = swap(theme, env), S = Weather.sunPos(env.sun), out = [L[0]];
+    const L = swap(theme, env), S = Weather.sunPos(env.night ? env.moon : env.sun), out = [L[0]];
     // Jika background memakai gambar sendiri, matahari/bulan/bintang bawaan tidak digambar.
     if (!Backdrop.get(theme.id, 'background')) out.push({ depth: 0.02, tone: false, draw: function (c, b) {
       const w = b.x1 - b.x0 + 4, h = b.y1 - b.y0 + 4;
@@ -248,19 +248,48 @@
     return out;
   }
 
+  // Suasana untuk satu waktu (tod = morning/day/dusk/night). sun = posisi matahari, moon = posisi bulan (0 kiri, 0,5 puncak, 1 kanan).
+  function envFor(state, todIn, sunIn, moonIn) {
+    const tod = ['morning', 'day', 'dusk', 'night'].indexOf(todIn) > -1 ? todIn : 'day';
+    const night = tod === 'night', lit = tod === 'morning' || tod === 'dusk', rain = state.weather === 'rain';
+    const bg = /^#[0-9a-f]{6}$/i.test(state.bg || '') ? state.bg : '#ffffff';
+    // Goresan hujan gelap di atas latar terang, terang di atas latar gelap.
+    const lum = [1, 3, 5].reduce(function (s, i, k) { return s + parseInt(bg.substr(i, 2), 16) * [0.3, 0.59, 0.11][k]; }, 0);
+    const sun = typeof sunIn === 'number' ? sunIn : 0.2, moon = typeof moonIn === 'number' ? moonIn : sun;
+    return { night: night, rain: rain, tod: tod, lit: lit, sun: sun, moon: moon, key: { morning: 'm', day: 'd', dusk: 's', night: 'n' }[tod] + (rain ? 'r' : 'c'),
+             plain: state.theme === 'plain', bg: bg, rainRGB: lum > 140 ? '92,108,136' : '205,222,242' };
+  }
+
+  // ---- Jam hari: waktu sebagai fase kontinu 0 (pagi) - 1 (siang) - 2 (sore) - 3 (malam) - 4 (kembali ke pagi) ----
+  // Di antara dua waktu yang bersebelahan, adegan digambar dua kali (waktu asal dan tujuan) lalu dicampur dengan bobot yang berjalan
+  // halus (Renderer). Matahari dan bulan memakai satu posisi kontinu yang sama di kedua gambar, jadi tidak ada matahari ganda.
+  const TODS = ['morning', 'day', 'dusk', 'night'];
+  const PHASE_SECONDS = 60;          // lama satu perpindahan (pagi ke siang, siang ke sore, ...) pada kecepatan 1x
+  const SPEEDS = [1, 2, 4, 8];       // pilihan kecepatan
+  const CLOCK_KEY = 'rumah-mungil-clock';
+  const ease = function (t) { return t * t * (3 - 2 * t); };
+  // Matahari terbit di kiri (0,1) saat pagi, puncak (0,5) saat siang, terbenam (0,9) saat sore, lalu menghilang bersama gambar sore;
+  // menjelang pagi ia muncul lagi dari ujung kiri. Bulan naik di antara sore dan pagi (puncak tengah malam).
+  const sunAt = function (p) { p = mod(p, 4); return p < 2 ? 0.1 + 0.4 * p : p < 3 ? 0.9 + 0.1 * (p - 2) : 0.1 * (p - 3); };
+  const moonAt = function (p) { p = mod(p, 4); return p >= 2 ? 0.1 + 0.4 * (p - 2) : 0.1; };
+  const nightWeight = function (p) { p = mod(p, 4); return p < 2 ? 0 : p < 3 ? ease(p - 2) : 1 - ease(p - 3); };
+  const clock = {
+    on: false,       // true = suasana ditentukan jam (fase kontinu), bukan pilihan waktu biasa
+    auto: false,     // true = fase maju sendiri
+    phase: 1, speed: 1, dir: 1,   // dir: 1 maju, -1 mundur
+    bias: 0,         // selisih posisi matahari saat masuk jam; menyusut halus ke 0 supaya tidak ada lompatan
+    glide: null, drag: false, t: 0, saved: 0, night: null
+  };
+  function clockSave() {
+    clock.saved = performance.now();
+    try { localStorage.setItem(CLOCK_KEY, JSON.stringify({ on: clock.on, auto: clock.auto, phase: +mod(clock.phase, 4).toFixed(4), speed: clock.speed, dir: clock.dir })); } catch (e) { /* abaikan */ }
+  }
+
   const Weather = {
     time: 0,
     still: false,   // true = tanpa animasi (preferensi "kurangi gerakan")
-    env: function (state) {
-      const tod = ['morning', 'day', 'dusk', 'night'].indexOf(state.time) > -1 ? state.time : 'day';
-      const night = tod === 'night', lit = tod === 'morning' || tod === 'dusk', rain = state.weather === 'rain';
-      const bg = /^#[0-9a-f]{6}$/i.test(state.bg || '') ? state.bg : '#ffffff';
-      // Goresan hujan gelap di atas latar terang, terang di atas latar gelap.
-      const lum = [1, 3, 5].reduce(function (s, i, k) { return s + parseInt(bg.substr(i, 2), 16) * [0.3, 0.59, 0.11][k]; }, 0);
-      const sun = typeof state.sun === 'number' ? state.sun : 0.2;
-      return { night: night, rain: rain, tod: tod, lit: lit, sun: sun, key: { morning: 'm', day: 'd', dusk: 's', night: 'n' }[tod] + (rain ? 'r' : 'c'),
-               plain: state.theme === 'plain', bg: bg, rainRGB: lum > 140 ? '92,108,136' : '205,222,242' };
-    },
+    // Suasana saat ini (waktu pilihan, tanpa jam otomatis). Lihat juga Weather.mix untuk jam otomatis.
+    env: function (state) { return envFor(state, state.time, state.sun, state.sun); },
     layers: layers, tint: tint, untint: untint,
 
     // Posisi matahari (atau bulan di malam hari) di langit: 0 = kiri/terbit, 0.5 = puncak, 1 = kanan/terbenam.
@@ -367,6 +396,108 @@
       ctx.globalCompositeOperation = 'source-over';
     }
   };
+
+
+  // ---- API jam ----
+  Weather.clock = clock;
+  Weather.saveClock = clockSave;
+  Weather.SPEEDS = SPEEDS;
+  Weather.PHASE_SECONDS = PHASE_SECONDS;
+  Weather.TODS = TODS;
+
+  // Suasana yang dipakai untuk menggambar: {a, b, f}. b = null kalau cukup satu suasana; kalau ada, b dicampur di atas a dengan bobot f (0 - 1).
+  Weather.mix = function (state) {
+    if (!clock.on || state.noClock) return { a: Weather.env(state), b: null, f: 0 };   // noClock: pratinjau tema, tidak ikut jam hari
+    const p = mod(clock.phase, 4), i = Math.floor(p) % 4, w = ease(p - Math.floor(p));
+    const sun = Math.max(0, Math.min(1, sunAt(p) + clock.bias)), moon = Math.max(0, Math.min(1, moonAt(p) + clock.bias));
+    if (w < 0.004) return { a: envFor(state, TODS[i], sun, moon), b: null, f: 0 };
+    if (w > 0.996) return { a: envFor(state, TODS[(i + 1) % 4], sun, moon), b: null, f: 0 };
+    return { a: envFor(state, TODS[i], sun, moon), b: envFor(state, TODS[(i + 1) % 4], sun, moon), f: w };
+  };
+
+  // Apakah sekarang malam (untuk suara)? Jam: lebih dari separuh malam.
+  Weather.isNight = function (state) { return clock.on ? nightWeight(clock.phase) > 0.5 : !!state && state.time === 'night'; };
+
+  // Waktu terdekat dari fase jam (indeks 0-3), untuk menandai pilihan di panel.
+  Weather.nearestTime = function () { return TODS[Math.round(mod(clock.phase, 4)) % 4]; };
+
+  // Ada yang bergerak sendiri karena jam (perlu gambar tiap frame)?
+  Weather.clockRunning = function () { return clock.on && ((clock.auto && !clock.drag) || !!clock.glide || clock.bias !== 0); };
+
+  // Masuk ke mode jam dari suasana biasa: fase = waktu saat ini, posisi matahari mengalir halus dari posisi lama.
+  Weather.clockStart = function (state) {
+    if (clock.on) return;
+    const k0 = TODS.indexOf(state.time), i = k0 < 0 ? 1 : k0, p = i;
+    clock.on = true; clock.phase = p; clock.glide = null;
+    const ref = TODS[i] === 'night' ? moonAt(p) : sunAt(p), cur = typeof state.sun === 'number' ? state.sun : ref;
+    clock.bias = Math.abs(cur - ref) < 0.002 ? 0 : cur - ref;
+    clock.night = Weather.isNight(state);
+    clockSave();
+  };
+  Weather.setAuto = function (state, on) {
+    if (on) Weather.clockStart(state);
+    clock.auto = !!on && clock.on;
+    clockSave();
+  };
+  // Atur fase langsung (penggeser waktu): maju atau mundur, selalu kontinu.
+  Weather.setPhase = function (state, p) {
+    Weather.clockStart(state);
+    clock.glide = null;
+    clock.phase = mod(+p, 4);
+  };
+  Weather.setSpeed = function (v) { if (SPEEDS.indexOf(v) > -1) { clock.speed = v; clockSave(); } };
+  Weather.setDir = function (d) { clock.dir = d < 0 ? -1 : 1; clockSave(); };
+
+  // Keluar dari jam menuju satu waktu: fase meluncur halus lewat jalur terpendek, lalu done(posisiMatahari) dipanggil dan mode jam mati.
+  Weather.clockExit = function (tod, done) {
+    const to0 = TODS.indexOf(tod);
+    if (!clock.on || to0 < 0) { if (done) done(null); return; }
+    const from = mod(clock.phase, 4), delta = mod(to0 - from + 2, 4) - 2;   // -2 .. 2: jalur terpendek
+    const finish = function () {
+      const sun = to0 === 3 ? moonAt(to0) : sunAt(to0);
+      clock.on = false; clock.auto = false; clock.glide = null; clock.bias = 0; clock.night = null;
+      clockSave();
+      if (done) done(sun);
+    };
+    clock.auto = false;
+    if (Math.abs(delta) < 0.01) { clock.phase = to0; finish(); return; }
+    clock.glide = { from: from, to: from + delta, el: 0, dur: Math.max(0.7, Math.min(2.2, 0.6 + Math.abs(delta) * 0.7)), done: finish };
+  };
+
+  // Dipanggil tiap frame gambar dengan waktu rAF (ms). Mengembalikan true kalau ada yang berubah.
+  Weather.tick = function (t) {
+    const dt = clock.t ? Math.min(0.5, Math.max(0, (t - clock.t) / 1000)) : 0;   // maks 0,5 dtk: frame lambat tetap mengikuti waktu nyata, tapi tab yang lama disembunyikan tidak melompat jauh
+    clock.t = t;
+    if (!clock.on) return false;
+    let moved = false;
+    if (clock.glide) {
+      const g = clock.glide; g.el += dt;
+      const u = Math.min(1, g.el / g.dur);
+      clock.phase = mod(g.from + (g.to - g.from) * ease(u), 4); moved = true;
+      if (u >= 1) { clock.glide = null; g.done(); }
+    } else if (clock.auto && !clock.drag) {
+      clock.phase = mod(clock.phase + clock.dir * clock.speed * dt / PHASE_SECONDS, 4); moved = true;
+    }
+    if (clock.on && clock.bias) { clock.bias *= Math.exp(-dt / 0.9); if (Math.abs(clock.bias) < 0.002) clock.bias = 0; moved = true; }
+    if (clock.on) {
+      const n = Weather.isNight(global.State && State.data);
+      if (n !== clock.night) { clock.night = n; if (global.Sound && global.State && State.data) Sound.set(State.data); }
+      if (moved && t - clock.saved > 2000) clockSave();
+    }
+    return moved;
+  };
+
+  // Pulihkan jam dari sesi sebelumnya (dipanggil sekali setelah State siap).
+  Weather.clockRestore = function () {
+    try {
+      const c = JSON.parse(localStorage.getItem(CLOCK_KEY) || 'null');
+      if (!c || !c.on || !isFinite(c.phase)) return;
+      clock.on = true; clock.phase = mod(+c.phase, 4); clock.auto = !!c.auto;
+      clock.speed = SPEEDS.indexOf(c.speed) > -1 ? c.speed : 1; clock.dir = c.dir < 0 ? -1 : 1;
+      clock.night = Weather.isNight(global.State && State.data);
+    } catch (e) { /* abaikan */ }
+  };
+  window.addEventListener('pagehide', function () { if (clock.on) clockSave(); });
 
   global.Weather = Weather;
 })(window);

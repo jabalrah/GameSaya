@@ -290,6 +290,13 @@
         data[key] = val; commit();
       }
     },
+    // Waktu dan posisi matahari sekaligus (satu langkah riwayat). Dipakai saat jam hari berhenti di satu waktu.
+    setTimeSun: function (time, sun) {
+      if (TIMES.indexOf(time) < 0) return;
+      sun = typeof sun === 'number' && isFinite(sun) ? Math.round(clamp(sun, 0, 1) * 100) / 100 : data.sun;
+      if (data.time === time && data.sun === sun) { commit(); return; }
+      record(); data.time = time; data.sun = sun; commit();
+    },
     setTheme: function (id) { if (Themes.has(id) && data.theme !== id) { record(); data.theme = id; commit(); } },
     // Warna latar tema polos (#rrggbb). live = true saat pemilih warna sedang digeser: gambar saja
     // yang diperbarui (panel tidak dibangun ulang, supaya pemilih warna tidak menutup sendiri).

@@ -355,3 +355,11 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .layer-bar button:active:not(:disabled) { background: var(--press); }
 .layer-bar button:disabled { opacity: 0.28; cursor: default; }
 @media (pointer: coarse) { .layer-bar button { height: 30px; line-height: 30px; font-size: 12px; } }
+
+/* ---- Siklus hari (tab Suasana) ---- */
+.clock-label { margin: 6px 0 2px; font-size: 12px; font-weight: 600; min-height: 1.4em; }
+.clock-scale { position: relative; height: 14px; margin: 0 0 10px; color: var(--muted); font-size: 10px; }
+.clock-scale span { position: absolute; top: 0; }
+.tabs-tight { gap: 4px; margin-bottom: 8px; }
+.tabs-tight .tab { padding: 2px 8px; }
+.clock-scale span { transform: translateX(-50%); }

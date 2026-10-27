@@ -72,14 +72,15 @@
   let raf = 0, dirty = false, lastDraw = 0, capGap = 0;          // capGap: batas laju darurat (ms) bila perangkat lambat
   let prevT = 0, nFrames = 0, sumDelta = 0, sumCost = 0, calmWins = 0, drawMs = 0, seen = 0, minLevel = 0, upAt = 0;
 
-  function draw() { Renderer.draw(ctx, State.data, State.selected, ppu(), Camera.view); if (window.UI && UI.layout) UI.layout(); }
+  function draw() { Renderer.draw(ctx, State.data, State.selected, ppu(), Camera.view); if (window.UI) { if (UI.layout) UI.layout(); if (UI.syncClock) UI.syncClock(); } }
 
   // Apakah ada yang bergerak sendiri (hujan, daun, awan)?
   function animation() {
-    if (calm || !State.data) return 0;
+    const clk = Weather.clockRunning() ? 1 : 0;   // jam hari berjalan (siklus otomatis atau meluncur ke waktu pilihan): 30 fps sudah mulus
+    if (calm || !State.data) return clk;
     const rain = State.data.weather === 'rain', leaves = State.data.pieces.some(function (p) { return p.kind === 'foliage'; });
     if (rain || leaves) return 2;              // gerak cepat: sebisa mungkin 60 fps
-    return Backdrop.animated(State.data.theme) ? 1 : 0;   // hanya awan: gerak sangat pelan, 30 fps sudah mulus
+    return Math.max(clk, Backdrop.animated(State.data.theme) ? 1 : 0);   // hanya awan: gerak sangat pelan, 30 fps sudah mulus
   }
 
   function requestDraw() { dirty = true; if (!raf) raf = requestAnimationFrame(loop); }
@@ -89,6 +90,7 @@
     const anim = animation(), gap = Math.max(capGap, anim === 1 ? 33 : 0);
     if (!dirty && anim && gap && t - lastDraw < gap - 2) { raf = requestAnimationFrame(loop); return; }   // lewati frame: belum waktunya
     if (anim) Weather.time = t / 1000;
+    Weather.tick(t);   // jam hari: majukan fase suasana
     dirty = false;
     const t0 = performance.now();
     draw();
@@ -140,6 +142,7 @@
 
   Assets.loadAll().then(function () {
     State.init();
+    Weather.clockRestore();   // siklus hari dari sesi sebelumnya (kalau ada)
     UI.init({ panel: panel, left: panelLeft, status: status, canvas: canvas });
 
     State.onDraw(requestDraw);

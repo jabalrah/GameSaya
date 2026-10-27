@@ -1,0 +1,11 @@
+Folder ini untuk PNG jendela versi MALAM (jendela menyala).
+
+Aturan:
+  - Nama file harus SAMA PERSIS dengan jendela siangnya di assets/windows/.
+      assets/windows/window_square.png   ->   assets/windows_malam/window_square.png
+      assets/windows/window_arch.png     ->   assets/windows_malam/window_arch.png
+    (Kalau nama siangnya memakai @w, misalnya window_bulat@w18.png, nama malamnya juga.)
+  - Ukuran gambar harus sama dengan versi siang.
+  - PNG malam digambar apa adanya (tidak digelapkan lagi); cahaya hangat tetap ditambahkan di sekelilingnya.
+  - Kalau file malam suatu jendela tidak ada di sini, jendela siangnya digelapkan seperti biasa.
+  - Muat ulang halaman (F5) setelah menambah atau mengganti file.
